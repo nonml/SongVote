@@ -1,12 +1,14 @@
 import React from "react";
 import { useParams } from "react-router-dom";
-import { fetchStationEvidence } from "../lib/api";
+import { fetchStationEvidence, fetchLegalKit } from "../lib/api";
 
 export default function StationPage() {
   const { stationId } = useParams<{ stationId: string }>();
   const [evidence, setEvidence] = React.useState<any>(null);
+  const [legalKit, setLegalKit] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [exporting, setExporting] = React.useState(false);
 
   React.useEffect(() => {
     if (!stationId) return;
@@ -20,6 +22,8 @@ export default function StationPage() {
         setLoading(false);
       }
     );
+    // Also fetch legal kit
+    fetchLegalKit(stationId).then((kit) => setLegalKit(kit));
   }, [stationId]);
 
   if (loading) {
@@ -214,6 +218,116 @@ export default function StationPage() {
           <li>Disputed/missing stations are visible</li>
         </ul>
       </div>
+
+      {/* Legal Kit Export */}
+      <div className="card">
+        <h3 style={{ marginTop: 0 }}>Legal Kit Export ⚖️</h3>
+        <p style={{ fontSize: "14px", marginTop: 0 }}>
+          Download structured evidence for legal action. Includes station info, all evidence photos,
+          verification tallies, incident reports, custody events, and audit logs with SHA-256 hashes.
+        </p>
+        <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <button className="btn" disabled={exporting || !legalKit} onClick={exportLegalKit}>
+            {exporting ? "Generating..." : "Download JSON Evidence"}
+          </button>
+          <button className="btn secondary" disabled={!legalKit} onClick={exportZip}>
+            {exporting ? "Compressing..." : "Download ZIP (Photos + JSON)"}
+          </button>
+        </div>
+        {legalKit && (
+          <div style={{ marginTop: 12, fontSize: "12px", color: "#666" }}>
+            <strong>Generated:</strong> {legalKit.generated_at}<br />
+            <strong>Station:</strong> {legalKit.station_info?.station_number} - {legalKit.station_info?.location_name}<br />
+            <strong>Submissions:</strong> {legalKit.submissions?.length || 0}<br />
+            <strong>Incidents:</strong> {legalKit.incidents?.length || 0}<br />
+            <strong>Custody Events:</strong> {legalKit.custody_events?.length || 0}
+          </div>
+        )}
+      </div>
     </div>
   );
+
+  // Export functions
+  function exportLegalKit() {
+    if (!legalKit) return;
+    setExporting(true);
+    const jsonStr = JSON.stringify(legalKit, null, 2);
+    const blob = new Blob([jsonStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `evidence-${legalKit.station_info?.station_number}-${legalKit.station_id}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setExporting(false);
+  }
+
+  async function exportZip() {
+    if (!legalKit) return;
+    setExporting(true);
+    try {
+      // Import JSZip dynamically to avoid bundling issues
+      const JSZip = await import("jszip");
+      const zip = new JSZip.default();
+
+      // Add station info JSON
+      zip.file("station_info.json", JSON.stringify(legalKit.station_info, null, 2));
+
+      // Add submissions JSON
+      zip.file("submissions.json", JSON.stringify(legalKit.submissions, null, 2));
+
+      // Add incidents JSON
+      zip.file("incidents.json", JSON.stringify(legalKit.incidents, null, 2));
+
+      // Add custody events JSON
+      zip.file("custody_events.json", JSON.stringify(legalKit.custody_events, null, 2));
+
+      // Add verification logs JSON
+      zip.file("verification_logs.json", JSON.stringify(legalKit.verification_logs, null, 2));
+
+      // Add photo hashes JSON
+      zip.file("photo_hashes.json", JSON.stringify(legalKit.photo_hashes, null, 2));
+
+      // Add "where to file" guidance text
+      const guidanceText = `THAI ELECTION EVIDENCE LEGAL KIT
+============================
+
+This packet contains evidence collected for station ${legalKit.station_info?.station_number}
+located at ${legalKit.station_info?.location_name}.
+
+WHERE TO FILE:
+1. Election Commission (ECT) - Original complaint filing
+2. Office of the Attorney General - Criminal investigation
+3. Local District Office - Preliminary report
+4. Media outlets - Public transparency (redacted)
+
+NEXT STEPS:
+1. Review all evidence in this packet
+2. Complete the "Evidence Index" spreadsheet
+3. File formal complaints with supporting documentation
+4. Follow up with authorities for investigation status
+
+DISCLAIMER: This is citizen-collected evidence. For legal admissibility,
+ensure chain-of-custody documentation is maintained.
+
+Generated: ${legalKit.generated_at}
+Station ID: ${legalKit.station_info?.station_id}
+`;
+
+      zip.file("WHERE_TO_FILE.txt", guidanceText);
+
+      // Generate and download ZIP
+      const content = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(content);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `evidence-kit-${legalKit.station_info?.station_number}-${legalKit.station_id}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      alert("Failed to create ZIP: " + e.message);
+    } finally {
+      setExporting(false);
+    }
+  }
 }

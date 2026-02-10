@@ -1,7 +1,7 @@
 import React from "react";
 import StationSelector from "../components/StationSelector";
 import UnlistedStationModal from "../components/UnlistedStationModal";
-import { fetchConfig, submitIncident, submitCustody, type Config, type Station } from "../lib/api";
+import { fetchConfig, submitEvidence, submitIncident, submitCustody, isOnline, addToOfflineQueue, type Config, type Station } from "../lib/api";
 
 export default function Capture() {
   const [cfg, setCfg] = React.useState<Config | null>(null);
@@ -92,6 +92,7 @@ export default function Capture() {
 
             <div style={{ marginTop: 12, display:"flex", justifyContent:"space-between", gap: 12, flexWrap:"wrap" }}>
               <small>Selected station: {station ? `#${station.station_number} · ${station.location_name ?? ""}` : "None"}</small>
+              {!isOnline() && <span className="badge warn">Offline</span>}
               <button className="btn" disabled={!station || uploading} onClick={async () => {
                 if (!station) return;
                 setUploadErr(null); setUploadMsg(null); setUploading(true);
@@ -106,11 +107,25 @@ export default function Capture() {
                     payload.photo_partylist_key = `user-upload-${Date.now()}`;
                     payload.checksum_partylist_total = partylistChecksum ? Number(partylistChecksum) : undefined;
                   }
-                  // Call the worker API (in real app, this would be to presigned upload + metadata)
-                  alert("Upload would be triggered here.\nIn production: send files to R2 with presigned URL, then record metadata in DB.");
-                  setUploadMsg("Upload queued (MVP demo)");
+
+                  // Check if online or offline
+                  if (isOnline()) {
+                    // Online: submit directly
+                    await submitEvidence(payload);
+                    setUploadMsg("Upload submitted!");
+                  } else {
+                    // Offline: add to queue
+                    const queueItem = {
+                      id: crypto.randomUUID(),
+                      type: "evidence" as const,
+                      payload,
+                      timestamp: Date.now()
+                    };
+                    addToOfflineQueue(queueItem);
+                    setUploadMsg("Saved for offline upload");
+                  }
                 } catch (e: any) {
-                  setUploadErr(e?.message ?? "Upload failed");
+                  setUploadErr(e?.message ?? "Submit failed");
                 } finally {
                   setUploading(false);
                 }

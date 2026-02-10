@@ -1,7 +1,7 @@
 import React from "react";
 import StationSelector from "../components/StationSelector";
 import UnlistedStationModal from "../components/UnlistedStationModal";
-import { fetchConfig, submitCustody, submitIncident, type Config, type Station } from "../lib/api";
+import { fetchConfig, submitCustody, submitIncident, fetchPresignedUpload, isOnline, addToOfflineQueue, type Config, type Station } from "../lib/api";
 
 type Tab = "incident" | "custody";
 
@@ -44,13 +44,40 @@ export default function Report() {
   const [sealId, setSealId] = React.useState<string>("");
   const [custodyNotes, setCustodyNotes] = React.useState<string>("");
 
+  // Image upload state for incident/custody
+  const [incidentPhoto, setIncidentPhoto] = React.useState<File | null>(null);
+  const [custodyPhoto, setCustodyPhoto] = React.useState<File | null>(null);
+
   React.useEffect(() => { fetchConfig().then(setCfg); }, []);
+
+  // Upload a photo to R2 and return the key
+  async function uploadPhoto(file: File): Promise<string> {
+    const presigned = await fetchPresignedUpload(file.name, file.type, tab === "incident" ? "incident" : "custody");
+    if (!presigned.url) throw new Error("Failed to get presigned URL");
+
+    const response = await fetch(presigned.url, {
+      method: "PUT",
+      headers: { "Content-Type": file.type },
+      body: file
+    });
+    if (!response.ok) throw new Error("Photo upload failed");
+    return presigned.key;
+  }
 
   async function submit() {
     setErr(null); setMsg(null);
     if (!station) { setErr("Select a station first."); return; }
     setBusy(true);
     try {
+      let mediaKeys: string[] = [];
+
+      // Upload photo if provided
+      const photoToUpload = tab === "incident" ? incidentPhoto : custodyPhoto;
+      if (photoToUpload) {
+        const key = await uploadPhoto(photoToUpload);
+        mediaKeys = [key];
+      }
+
       const payloadBase = {
         station_id: station.id,
         constituency_id: station.constituency_id,
@@ -58,26 +85,52 @@ export default function Report() {
         station_number: station.station_number
       };
 
-      if (tab === "incident") {
-        const r = await submitIncident({
-          ...payloadBase,
-          incident_type: incidentType,
-          occurred_at: incidentTime ? new Date(incidentTime).toISOString() : null,
-          description: incidentDesc || null,
-          media_keys: []
+      const payload = tab === "incident" ? {
+        ...payloadBase,
+        incident_type: incidentType,
+        occurred_at: incidentTime ? new Date(incidentTime).toISOString() : null,
+        description: incidentDesc || null,
+        media_keys: mediaKeys
+      } : {
+        ...payloadBase,
+        event_type: custodyType,
+        occurred_at: custodyTime ? new Date(custodyTime).toISOString() : null,
+        box_id: boxId || null,
+        seal_id: sealId || null,
+        notes: custodyNotes || null,
+        media_keys: mediaKeys
+      };
+
+      const endpoint = tab === "incident" ? "incident/report" : "custody/event";
+
+      // Check if online or offline
+      if (isOnline()) {
+        // Online: submit directly
+        const r = await fetch(`${import.meta.env.VITE_API_BASE || ""}/api/v1/${endpoint}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
         });
-        setMsg(`Incident submitted ✅ id=${r.id ?? "ok"}`);
+        if (!r.ok) throw new Error("Request failed");
+        const result = await r.json();
+        setMsg(`${tab === "incident" ? "Incident" : "Custody"} submitted ✅ id=${result.id ?? "ok"}`);
       } else {
-        const r = await submitCustody({
-          ...payloadBase,
-          event_type: custodyType,
-          occurred_at: custodyTime ? new Date(custodyTime).toISOString() : null,
-          box_id: boxId || null,
-          seal_id: sealId || null,
-          notes: custodyNotes || null,
-          media_keys: []
-        });
-        setMsg(`Custody event submitted ✅ id=${r.id ?? "ok"}`);
+        // Offline: add to queue
+        const queueItem = {
+          id: crypto.randomUUID(),
+          type: tab === "incident" ? "incident" : "custody",
+          payload,
+          timestamp: Date.now()
+        };
+        addToOfflineQueue(queueItem);
+        setMsg(`${tab === "incident" ? "Incident" : "Custody"} saved for offline upload`);
+      }
+
+      // Clear photo state
+      if (tab === "incident") {
+        setIncidentPhoto(null);
+      } else {
+        setCustodyPhoto(null);
       }
     } catch (e: any) {
       setErr(e?.message ?? "Submit failed");
@@ -138,6 +191,18 @@ export default function Report() {
                   </div>
                 </div>
 
+                <div className="card" style={{ marginTop: 10 }}>
+                  <label>Photo evidence (optional)</label>
+                  <input className="input" type="file" accept="image/*" onChange={e => {
+                    const f = e.target.files?.[0];
+                    if (f) setIncidentPhoto(f);
+                  }} />
+                  {incidentPhoto && <div style={{ marginTop: 8, display:"flex", alignItems:"center", gap: 8 }}>
+                    <span className="badge ok">Selected: {incidentPhoto.name}</span>
+                    <button type="button" className="btn secondary" onClick={() => setIncidentPhoto(null)}>Remove</button>
+                  </div>}
+                </div>
+
                 <small>Tip: If safe, capture the posted board area showing it's missing/obstructed. Avoid faces.</small>
               </>
             ) : (
@@ -168,6 +233,18 @@ export default function Report() {
                     <textarea className="input" rows={5} value={custodyNotes} onChange={e => setCustodyNotes(e.target.value)}
                       placeholder="Seal intact? Any mismatch? Where was the handoff? Keep factual." />
                   </div>
+                </div>
+
+                <div className="card" style={{ marginTop: 10 }}>
+                  <label>Photo evidence (optional)</label>
+                  <input className="input" type="file" accept="image/*" onChange={e => {
+                    const f = e.target.files?.[0];
+                    if (f) setCustodyPhoto(f);
+                  }} />
+                  {custodyPhoto && <div style={{ marginTop: 8, display:"flex", alignItems:"center", gap: 8 }}>
+                    <span className="badge ok">Selected: {custodyPhoto.name}</span>
+                    <button type="button" className="btn secondary" onClick={() => setCustodyPhoto(null)}>Remove</button>
+                  </div>}
                 </div>
 
                 <small>Tip: Photo the seal/box ID before and after handoff if safe.</small>

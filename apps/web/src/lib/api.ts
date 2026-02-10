@@ -178,6 +178,17 @@ export async function fetchPresignedUpload(filename: string, type: string = "ima
   }
 }
 
+export async function fetchLegalKit(stationId: string): Promise<any> {
+  try {
+    const url = `${API_BASE}/api/v1/legal-kit/${encodeURIComponent(stationId)}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("legal kit fetch failed");
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
 export async function submitEvidence(payload: {
   station_id: string;
   photo_constituency_key?: string;
@@ -194,4 +205,99 @@ export async function submitEvidence(payload: {
   });
   if (!res.ok) throw new Error("evidence upload failed");
   return await res.json();
+}
+
+// Offline Queue support
+// Check if user is online
+export function isOnline(): boolean {
+  return navigator.onLine;
+}
+
+// Queue for offline submissions
+interface OfflineItem {
+  id: string;
+  type: "evidence" | "incident" | "custody";
+  payload: any;
+  timestamp: number;
+}
+
+const QUEUE_STORAGE_KEY = "evidence_offline_queue";
+
+// Get current queue from localStorage
+export function getOfflineQueue(): OfflineItem[] {
+  try {
+    const data = localStorage.getItem(QUEUE_STORAGE_KEY);
+    return data ? JSON.parse(data) : [];
+  } catch {
+    return [];
+  }
+}
+
+// Add item to queue
+export function addToOfflineQueue(item: OfflineItem): void {
+  try {
+    const queue = getOfflineQueue();
+    queue.push(item);
+    localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(queue));
+  } catch (e) {
+    console.error("Failed to add to offline queue:", e);
+  }
+}
+
+// Remove item from queue after successful sync
+export function removeFromQueue(id: string): void {
+  try {
+    const queue = getOfflineQueue();
+    const filtered = queue.filter((item) => item.id !== id);
+    localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(filtered));
+  } catch (e) {
+    console.error("Failed to remove from queue:", e);
+  }
+}
+
+// Clear queue
+export function clearOfflineQueue(): void {
+  try {
+    localStorage.removeItem(QUEUE_STORAGE_KEY);
+  } catch (e) {
+    console.error("Failed to clear queue:", e);
+  }
+}
+
+// Sync queue to server
+export async function syncOfflineQueue(): Promise<{ success: number; failed: number }> {
+  const queue = getOfflineQueue();
+  let success = 0;
+  let failed = 0;
+  const failedItems: OfflineItem[] = [];
+
+  for (const item of queue) {
+    try {
+      await submitOfflineItem(item);
+      success++;
+    } catch (e) {
+      failed++;
+      failedItems.push(item);
+    }
+  }
+
+  // Keep failed items in queue
+  if (failed > 0) {
+    localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(failedItems));
+  } else {
+    clearOfflineQueue();
+  }
+
+  return { success, failed };
+}
+
+// Submit a single offline item
+async function submitOfflineItem(item: OfflineItem): Promise<void> {
+  const url = `${API_BASE}/api/v1/${item.type === "evidence" ? "evidence/upload" : item.type === "incident" ? "incident/report" : "custody/event"}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(item.payload),
+  });
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
 }

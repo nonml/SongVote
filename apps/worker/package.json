@@ -11,7 +11,9 @@
   },
   "dependencies": {
     "hono": "^4.5.9",
-    "@supabase/supabase-js": "^2.45.4"
+    "@supabase/supabase-js": "^2.45.4",
+    "@spartan-pdf/pdf": "^1.0.0",
+    "jszip": "^3.10.1"
   },
   "devDependencies": {
     "typescript": "^5.6.2",

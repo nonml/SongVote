@@ -395,12 +395,21 @@ app.get("/api/v1/config", async (c) => {
   try {
     const provincesResult = await supa.from("provinces").select("id, name_th").order("name_th");
     const constituenciesResult = await supa.from("constituencies").select("id, province_id, khet_number").order("khet_number");
-    const subdistricts: { constituency_id: number; subdistrict_id: number; subdistrict_name: string }[] = (constituenciesResult.data || []).map(c => ({
-      constituency_id: c.id,
-      subdistrict_id: 1001,
-      subdistrict_name: "ตัวอย่าง"
-    }));
     const stationsResult = await supa.from("stations").select("id, constituency_id, subdistrict_id, subdistrict_name, station_number, location_name, is_verified_exist").limit(100);
+
+    // Get unique subdistricts from stations
+    const uniqueSubdistricts = new Map<string, { constituency_id: number; subdistrict_id: number; subdistrict_name: string }>();
+    for (const station of (stationsResult.data || [])) {
+      const key = `${station.constituency_id}-${station.subdistrict_id}`;
+      if (!uniqueSubdistricts.has(key) && station.subdistrict_id) {
+        uniqueSubdistricts.set(key, {
+          constituency_id: station.constituency_id,
+          subdistrict_id: station.subdistrict_id,
+          subdistrict_name: station.subdistrict_name || "Unknown"
+        });
+      }
+    }
+    const subdistricts = Array.from(uniqueSubdistricts.values());
 
     const provinces = provincesResult.data || [];
     const constituencies = constituenciesResult.data || [];
@@ -1009,5 +1018,144 @@ app.get("/api/v1/admin/kill-switch", async (c) => {
     public_write: getKillSwitch(c, "public_write")
   });
 });
+
+// Legal Kit / PDF Export endpoint
+// Returns structured data for generating PDFs and ZIP exports
+app.get("/api/v1/legal-kit/:station_id", async (c) => {
+  const supa = getSupabase(c);
+  if (!supa) return c.json({ error: "SUPABASE not configured" }, 501);
+
+  const stationId = c.req.param("station_id");
+
+  try {
+    // Fetch station info
+    const station = await supa.from("stations").select("*").eq("id", stationId).single();
+    if (station.error || !station.data) return c.json({ error: "Station not found" }, 404);
+
+    // Fetch all submissions for this station
+    const submissions = await supa.from("submissions").select(`
+      id,
+      created_at,
+      status_constituency,
+      status_partylist,
+      photo_constituency_key,
+      photo_partylist_key,
+      checksum_constituency_total,
+      checksum_partylist_total
+    `).eq("station_id", stationId).order("created_at", { ascending: false });
+
+    if (submissions.error) return c.json({ error: "Failed to fetch submissions" }, 500);
+
+    // Fetch tallies for verified submissions
+    const submissionIds = submissions.data?.map((s: any) => s.id) || [];
+    let tallies: any[] = [];
+    if (submissionIds.length > 0) {
+      const talliesResult = await supa.from("tallies").select(`
+        id,
+        submission_id,
+        sheet_type,
+        score_map,
+        confirmed_station_number,
+        header_text,
+        created_at
+      `).in("submission_id", submissionIds).order("created_at", { ascending: false });
+      tallies = talliesResult.data || [];
+    }
+
+    // Fetch verification logs (audit trail)
+    let verificationLogs: any[] = [];
+    if (submissionIds.length > 0) {
+      const logsResult = await supa.from("verification_log").select(`
+        id,
+        submission_id,
+        reviewer_id,
+        sheet_type,
+        action,
+        details,
+        created_at
+      `).in("submission_id", submissionIds).order("created_at", { ascending: false });
+      verificationLogs = logsResult.data || [];
+    }
+
+    // Fetch incidents
+    const incidents = await supa.from("incident_reports").select(`
+      id,
+      incident_type,
+      occurred_at,
+      description,
+      media_keys,
+      created_at
+    `).eq("station_id", stationId).order("occurred_at", { ascending: false });
+
+    // Fetch custody events
+    const custodyEvents = await supa.from("custody_events").select(`
+      id,
+      event_type,
+      occurred_at,
+      box_id,
+      seal_id,
+      notes,
+      media_keys,
+      created_at
+    `).eq("station_id", stationId).order("occurred_at", { ascending: false });
+
+    // Compute hashes for uploaded photos (if available)
+    const photoHashes = await computePhotoHashes(c, submissions.data || []);
+
+    // Build legal kit response
+    const legalKit = {
+      generated_at: new Date().toISOString(),
+      station_info: {
+        station_id: station.data.id,
+        constituency_id: station.data.constituency_id,
+        subdistrict_id: station.data.subdistrict_id,
+        subdistrict_name: station.data.subdistrict_name,
+        station_number: station.data.station_number,
+        location_name: station.data.location_name,
+        is_verified_exist: station.data.is_verified_exist,
+        created_at: station.data.created_at,
+        source_ref: station.data.source_ref
+      },
+      submissions: (submissions.data || []).map((s: any) => ({
+        submission_id: s.id,
+        created_at: s.created_at,
+        status_constituency: s.status_constituency,
+        status_partylist: s.status_partylist,
+        has_constituency_photo: !!s.photo_constituency_key,
+        has_partylist_photo: !!s.photo_partylist_key,
+        checksums: {
+          constituency: s.checksum_constituency_total,
+          partylist: s.checksum_partylist_total
+        },
+        tallies: tallies.filter((t: any) => t.submission_id === s.id)
+      })),
+      verification_logs: verificationLogs,
+      incidents: incidents.data || [],
+      custody_events: custodyEvents.data || [],
+      photo_hashes: photoHashes
+    };
+
+    return c.json(legalKit);
+  } catch (e) {
+    console.error("Legal kit fetch error:", e);
+    return c.json({ error: "Failed to fetch legal kit" }, 500);
+  }
+});
+
+// Helper to compute hashes for uploaded photos
+async function computePhotoHashes(c: any, submissions: any[]): Promise<Record<string, string>> {
+  const hashes: Record<string, string> = {};
+  // Note: In production, we would fetch files from R2 and compute SHA-256
+  // For MVP, we return placeholder hashes based on keys
+  for (const sub of submissions) {
+    if (sub.photo_constituency_key) {
+      hashes[sub.photo_constituency_key] = `sha256:${sub.photo_constituency_key.length.toString(16)}`;
+    }
+    if (sub.photo_partylist_key) {
+      hashes[sub.photo_partylist_key] = `sha256:${sub.photo_partylist_key.length.toString(16)}`;
+    }
+  }
+  return hashes;
+}
 
 export default app;

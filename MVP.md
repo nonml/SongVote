@@ -242,5 +242,3 @@
 * [x] **Integrity:** verified numbers always link to evidence photo
 * [x] **Transparency:** disputed/missing stations visible (no silent failure)
 * [x] **Ops:** basic monitoring + error alerts + manual admin tools
-
-If you tell me your intended infra (Cloudflare-only vs AWS/Supabase mix) and a rough reviewer count (e.g., 50 / 200 / 1,000), I'll add **capacity DoDs** (expected throughput + coverage targets) as checkboxes too.
