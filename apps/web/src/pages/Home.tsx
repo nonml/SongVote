@@ -30,7 +30,7 @@ export default function Home() {
           <h3 style={{ marginTop: 0 }}>Understand impact 🎮</h3>
           <ul>
             <li>See if a station correction could flip a seat</li>
-            <li>“Votes needed” threshold</li>
+            <li>"Votes needed" threshold</li>
           </ul>
         </div>
       </div>

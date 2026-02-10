@@ -21,7 +21,7 @@ You explicitly said we must track:
 * **Station identity** (so evidence is anchored)
 * **Aggregation** (how station totals become constituency/national)
 * **Invalid/voided ballots** (and how they alter outcomes)
-* **Big picture** (seat-level impact, not just “this station is wrong”)
+* **Big picture** (seat-level impact, not just "this station is wrong")
 
 So the system is **5 evidence streams + 2 analysis streams**:
 
@@ -62,19 +62,19 @@ So the system is **5 evidence streams + 2 analysis streams**:
 
 7. **Impact**
 
-   * “Does this station matter?”
+   * "Does this station matter?"
    * Margin-to-flip & leverage ranking
    * **Simulation sandbox**: change numbers → see outcome shift
 
-### 3) “Tool helps people” philosophy (not volunteer-centric) 🧰
+### 3) "Tool helps people" philosophy (not volunteer-centric) 🧰
 
-You said: “design a tool/process to help people—not people help us.”
+You said: "design a tool/process to help people—not people help us."
 So the app must be self-serve:
 
 * Guides **when to use / how to use**
-* Makes “what to capture” simple (minimal vs ideal)
-* Explains “what this changes” (impact)
-* Produces “what to do next” (legal kit)
+* Makes "what to capture" simple (minimal vs ideal)
+* Explains "what this changes" (impact)
+* Produces "what to do next" (legal kit)
 
 ---
 
@@ -88,7 +88,7 @@ So the app must be self-serve:
 
 * **S.S. 5/18** posted at polling station after counting
 
-### Verification model (“Trusted 1.5”)
+### Verification model ("Trusted 1.5")
 
 * **1 photo + user checksum + 1 trusted reviewer transcription**
 * Auto-verify if reconciliation + checksum match passes
@@ -102,7 +102,7 @@ So the app must be self-serve:
 
 * Publish images openly
 * **EXIF wiped** on ingest
-* “Report/takedown” if faces/sensitive info appear
+* "Report/takedown" if faces/sensitive info appear
 
 ### DDoS / traffic resilience strategy
 
@@ -111,9 +111,9 @@ So the app must be self-serve:
 
 ---
 
-## ✅ The “Simulation Ground” we discussed (with the nuance)
+## ✅ The "Simulation Ground" we discussed (with the nuance)
 
-This part is critical and slightly under-specified in my earlier summary, so here’s the precise version:
+This part is critical and slightly under-specified in my earlier summary, so here's the precise version:
 
 ### What it is 🎮
 
@@ -135,18 +135,18 @@ A sandbox that lets users:
   So: for MVP, the simulator should:
 
   * **guarantee correctness for constituency flip impact**
-  * and label party-list impact as **“rule-set dependent”** unless you implement the exact legal allocation engine.
+  * and label party-list impact as **"rule-set dependent"** unless you implement the exact legal allocation engine.
 
-That’s a real nuance: without a correct allocation model, party-list “national seat impact” becomes misinformation. The solution is either:
+That's a real nuance: without a correct allocation model, party-list "national seat impact" becomes misinformation. The solution is either:
 
 * implement the **exact** party-list allocation rules for that election, or
-* keep party-list sandbox as “explore totals only” until rules are implemented.
+* keep party-list sandbox as "explore totals only" until rules are implemented.
 
 ---
 
-## ✅ “Legal authority” part (critical nuance)
+## ✅ "Legal authority" part (critical nuance)
 
-You said: “equip user with legal authority to go after ECT / corrupted party.”
+You said: "equip user with legal authority to go after ECT / corrupted party."
 
 Nuance:
 
@@ -156,7 +156,7 @@ Nuance:
   * Structured incident report
   * Clear routing to complaint channels
 
-So the “authority” we provide is:
+So the "authority" we provide is:
 
 * **procedural power** (know where/how to file)
 * **evidentiary power** (packets that hold up better)
@@ -166,28 +166,28 @@ So the “authority” we provide is:
 
 ## ✅ What I *did not explicitly include before* (now included)
 
-These are the only “nuances” that were previously not spelled out clearly:
+These are the only "nuances" that were previously not spelled out clearly:
 
 1. **Party-list seat impact is rule-set dependent** (needs correct allocation engine or label as conditional)
 2. **Custody tracking beyond public visibility is limited**
 
    * Citizens can track seals/box IDs when visible
-   * But you can’t “guarantee” the full logistics chain unless you have eyes on every handoff
-     → the system should treat custody as “observed events” with gaps explicitly shown
+   * But you can't "guarantee" the full logistics chain unless you have eyes on every handoff
+     → the system should treat custody as "observed events" with gaps explicitly shown
 3. **Defamation / safety posture**
 
    * The app should default to **facts + evidence**, not accusations
-   * Claims should be phrased as “discrepancy observed” / “seal mismatch observed”
+   * Claims should be phrased as "discrepancy observed" / "seal mismatch observed"
 4. **Methodology + reproducibility**
 
-   * Publish how verification works, what “verified” means, what “disputed” means
+   * Publish how verification works, what "verified" means, what "disputed" means
    * Provide export so media/others can recompute totals
 
 ---
 
 ## Master checklist (printable) ✅🧾
 
-If this list is in your docs, you won’t forget anything:
+If this list is in your docs, you won't forget anything:
 
 ### Evidence capture
 
@@ -214,7 +214,7 @@ If this list is in your docs, you won’t forget anything:
 
 ### Impact & action
 
-* [ ] Swing threshold + “worth chasing?” indicator
+* [ ] Swing threshold + "worth chasing?" indicator
 * [ ] Simulation sandbox (constituency guaranteed; party-list conditional unless rule engine implemented)
 * [ ] Legal packet generator (PDF/ZIP + hashes + incident summary + station metadata)
 * [ ] Routing guidance (ECT/NACC/Ombudsman/info request)

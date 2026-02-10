@@ -138,7 +138,7 @@ export default function Report() {
                   </div>
                 </div>
 
-                <small>Tip: If safe, capture the posted board area showing it’s missing/obstructed. Avoid faces.</small>
+                <small>Tip: If safe, capture the posted board area showing it's missing/obstructed. Avoid faces.</small>
               </>
             ) : (
               <>

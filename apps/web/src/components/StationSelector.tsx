@@ -6,13 +6,15 @@ type Props = {
   value?: Station | null;
   onChange: (station: Station | null) => void;
   onNeedUnlisted?: (ctx: { constituency_id: number; subdistrict_id: number | null; subdistrict_name: string }) => void;
+  onSearchStation?: (query: string) => void;
 };
 
-export default function StationSelector({ cfg, value, onChange, onNeedUnlisted }: Props) {
+export default function StationSelector({ cfg, value, onChange, onNeedUnlisted, onSearchStation }: Props) {
   const [provinceId, setProvinceId] = React.useState<number | "">("");
   const [constituencyId, setConstituencyId] = React.useState<number | "">("");
   const [subdistrictId, setSubdistrictId] = React.useState<number | "">("");
   const [stationId, setStationId] = React.useState<string>("");
+  const [searchQuery, setSearchQuery] = React.useState<string>("");
 
   const constituencies = React.useMemo(() => (!provinceId ? [] : cfg.constituencies.filter(c => c.province_id === provinceId)), [cfg, provinceId]);
   const subdistricts = React.useMemo(() => (!constituencyId ? [] : cfg.subdistricts.filter(s => s.constituency_id === constituencyId)), [cfg, constituencyId]);
@@ -21,8 +23,16 @@ export default function StationSelector({ cfg, value, onChange, onNeedUnlisted }
     if (!constituencyId) return [];
     let xs = cfg.stations.filter(s => s.constituency_id === constituencyId);
     if (subdistrictId) xs = xs.filter(s => s.subdistrict_id === subdistrictId);
+    if (searchQuery) {
+      // Filter by station number or location name
+      const q = searchQuery.toLowerCase();
+      xs = xs.filter(s =>
+        s.station_number.toString().includes(q) ||
+        (s.location_name && s.location_name.toLowerCase().includes(q))
+      );
+    }
     return xs.sort((a,b) => a.station_number - b.station_number);
-  }, [cfg, constituencyId, subdistrictId]);
+  }, [cfg, constituencyId, subdistrictId, searchQuery]);
 
   React.useEffect(() => {
     if (!value) return;
@@ -76,6 +86,25 @@ export default function StationSelector({ cfg, value, onChange, onNeedUnlisted }
       </div>
 
       <div style={{ marginTop: 12 }}>
+        <label>Station Search (optional)</label>
+        <input
+          className="input"
+          type="text"
+          value={searchQuery}
+          onChange={e => {
+            setSearchQuery(e.target.value);
+            if (onSearchStation) onSearchStation(e.target.value);
+          }}
+          placeholder="Search by station number or location..."
+          disabled={!constituencyId}
+          style={{ width: "100%", boxSizing: "border-box" }}
+        />
+        <small style={{ color: "#666", display: "block", marginTop: 4 }}>
+          Type station number (e.g., 99) or location keyword to filter
+        </small>
+      </div>
+
+      <div style={{ marginTop: 12 }}>
         <label>Station</label>
         <select className="input" value={stationId} onChange={e => setStationById(e.target.value)} disabled={!constituencyId}>
           <option value="">Select…</option>
@@ -84,7 +113,7 @@ export default function StationSelector({ cfg, value, onChange, onNeedUnlisted }
 
         {constituencyId ? (
           <div style={{ marginTop: 10, display:"flex", justifyContent:"space-between", gap: 10, flexWrap:"wrap" }}>
-            <small>Can’t find your station? Use “Unlisted Station”.</small>
+            <small>Can't find your station? Use "Unlisted Station".</small>
             <button className="btn secondary" onClick={() => {
               if (!onNeedUnlisted) return;
               const sd = subdistricts.find(x => x.subdistrict_id === subdistrictId) ?? subdistricts[0];

@@ -5,6 +5,8 @@ import Capture from "./pages/Capture";
 import Review from "./pages/Review";
 import Report from "./pages/Report";
 import Simulator from "./pages/Simulator";
+import StationPage from "./pages/StationPage";
+import PublicBoard from "./pages/PublicBoard";
 
 export default function App() {
   return (
@@ -22,6 +24,7 @@ export default function App() {
             <Link to="/report">Report</Link>
             <Link to="/review">Review</Link>
             <Link to="/simulator">Simulator</Link>
+            <Link to="/public-board">Public Board</Link>
           </nav>
         </div>
       </header>
@@ -33,6 +36,8 @@ export default function App() {
           <Route path="/report" element={<Report />} />
           <Route path="/review" element={<Review />} />
           <Route path="/simulator" element={<Simulator />} />
+          <Route path="/public-board" element={<PublicBoard />} />
+          <Route path="/station/:stationId" element={<StationPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

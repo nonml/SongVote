@@ -12,7 +12,9 @@
     "build:web": "npm run build --workspace=@thai-evidence/web",
     "build:worker": "npm run build --workspace=@thai-evidence/worker",
     "docker:up": "docker-compose up -d",
-    "docker:down": "docker-compose down"
+    "docker:down": "docker-compose down",
+    "snapshot:generate": "tsx scripts/generate_snapshot.ts",
+    "snapshot:watch": "tsx scripts/generate_snapshot_watch.ts"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

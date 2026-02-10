@@ -1,8 +1,8 @@
 # ส่องโหวต (SongVote) — Thai Election Evidence Layer
 
-Citizen-run **evidence layer** for Thailand’s MP general election.
+Citizen-run **evidence layer** for Thailand's MP general election.
 Built for the hard case: **central reporting may be opaque or compromised**.  
-**Evidence-first**: capture posted **S.S. 5/18** images (constituency + party-list) → verify via “Trusted 1.5” → aggregate → explore impact → export/use for accountability.
+**Evidence-first**: capture posted **S.S. 5/18** images (constituency + party-list) → verify via "Trusted 1.5" → aggregate → explore impact → export/use for accountability.
 
 > Not an official ECT product. This app does **not** change election law or run the official count.  
 > It publishes **station-level evidence** and an independently verified parallel record.
@@ -12,14 +12,14 @@ This repo is an MVP focused on:
 - **Evidence Locker**: upload and preserve S.S. 5/18 photos before they disappear
 - **Verification**: reviewer workflow + reconciliation checks
 - **Incidents & Custody**: report intimidation/process issues and observed seal/box events
-- **Impact Sandbox**: “does this station matter?” constituency flip what-if (sandbox only)
+- **Impact Sandbox**: "does this station matter?" constituency flip what-if (sandbox only)
 
 ## Modules
 ### 1) Capture (PWA)
 - Upload **S.S. 5/18** photos for:
   - **Constituency (MP)** sheet
   - **Party-list** sheet
-- “Trusted 1.5” checksums (per sheet):
+- "Trusted 1.5" checksums (per sheet):
   - **Total valid votes**
   - **Top candidate votes**
 - Offline-friendly: queues uploads if network is unstable (best-effort MVP)
@@ -39,11 +39,11 @@ This repo is an MVP focused on:
 - These are **observations**, not guarantees of full logistics chain coverage
 
 ### 4) Impact Sandbox
-- Constituency flip “what-if” simulator using live/verified data
+- Constituency flip "what-if" simulator using live/verified data
 - Helps users prioritize high-leverage stations
 - Sandbox edits do **not** modify the underlying dataset
 
-## Operational principles (why it’s reliable)
+## Operational principles (why it's reliable)
 - **Evidence-first**: every published number links back to a station artifact
 - **Tamper-evidence**: images can be hashed; review actions are logged
 - **Resilience-first**: public outputs should be served from cached/static snapshots (CDN) during peak load
