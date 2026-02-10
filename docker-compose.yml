@@ -1,0 +1,44 @@
+# Docker Compose for local development
+# This provides PostgreSQL and MinIO (S3-compatible) for local testing
+version: "3.8"
+
+services:
+  postgres:
+    image: supabase/postgres:15.1.1.41
+    restart: always
+    environment:
+      POSTGRES_DB: thai_evidence
+      POSTGRES_USER: evidence_user
+      POSTGRES_PASSWORD: evidence_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/migrations:/docker-entrypoint-initdb.d
+
+  # MinIO for S3-compatible storage (R2)
+  minio:
+    image: minio/minio:latest
+    ports:
+      - "9000:9000"
+      - "5555:5555"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":5555"
+
+  # MinIO console (optional)
+  minio-console:
+    image: minio/console:latest
+    ports:
+      - "9001:9001"
+    environment:
+      MINIO_SERVER_URL: http://minio:9000
+    depends_on:
+      - minio
+
+volumes:
+  postgres_data:
+  minio_data:

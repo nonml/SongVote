@@ -1,0 +1,82 @@
+import React from "react";
+import StationSelector from "../components/StationSelector";
+import UnlistedStationModal from "../components/UnlistedStationModal";
+import { fetchConfig, type Config, type Station } from "../lib/api";
+
+export default function Capture() {
+  const [cfg, setCfg] = React.useState<Config | null>(null);
+  const [station, setStation] = React.useState<Station | null>(null);
+  const [unlistedCtx, setUnlistedCtx] = React.useState<any>(null);
+  const [unlistedOpen, setUnlistedOpen] = React.useState(false);
+
+  React.useEffect(() => { fetchConfig().then(setCfg); }, []);
+
+  return (
+    <div style={{ display:"grid", gap: 12 }}>
+      <div className="card">
+        <h2 style={{ marginTop: 0 }}>Capture Results (S.S. 5/18) 📸</h2>
+        <p style={{ marginTop: 0 }}>Capture the posted S.S. 5/18 forms after counting. Do not cross barriers. Do not interfere.</p>
+      </div>
+
+      {!cfg ? <div className="card">Loading config…</div> : (
+        <>
+          <StationSelector
+            cfg={cfg}
+            value={station}
+            onChange={setStation}
+            onNeedUnlisted={(ctx) => { setUnlistedCtx(ctx); setUnlistedOpen(true); }}
+          />
+
+          <div className="card">
+            <h3 style={{ marginTop: 0 }}>Upload (MVP stub)</h3>
+            <p style={{ marginTop: 0 }}>This scaffold includes the UI. Wire it to your presigned upload endpoint next.</p>
+
+            <div className="row">
+              <div style={{ flex: 1, minWidth: 240 }}>
+                <label>Constituency sheet photo</label>
+                <input className="input" type="file" accept="image/*" />
+                <div className="row" style={{ marginTop: 8 }}>
+                  <div style={{ flex: 1 }}>
+                    <label>Checksum: total valid votes</label>
+                    <input className="input" placeholder="e.g., 534" />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label>Checksum: top candidate votes</label>
+                    <input className="input" placeholder="e.g., 289" />
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ flex: 1, minWidth: 240 }}>
+                <label>Party-list sheet photo</label>
+                <input className="input" type="file" accept="image/*" />
+                <div className="row" style={{ marginTop: 8 }}>
+                  <div style={{ flex: 1 }}>
+                    <label>Checksum: total valid votes</label>
+                    <input className="input" placeholder="e.g., 534" />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label>Checksum: top party votes</label>
+                    <input className="input" placeholder="e.g., 201" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ marginTop: 12, display:"flex", justifyContent:"space-between", gap: 12, flexWrap:"wrap" }}>
+              <small>Selected station: {station ? `#${station.station_number} · ${station.location_name ?? ""}` : "None"}</small>
+              <button className="btn" disabled={!station}>Submit (wire API)</button>
+            </div>
+          </div>
+
+          <UnlistedStationModal
+            open={unlistedOpen}
+            ctx={unlistedCtx}
+            onClose={() => setUnlistedOpen(false)}
+            onCreated={(station_id) => alert(`Created station: ${station_id} (refresh config to select it)`)}
+          />
+        </>
+      )}
+    </div>
+  );
+}

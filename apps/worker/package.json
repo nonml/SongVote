@@ -1,0 +1,21 @@
+{
+  "name": "@thai-evidence/worker",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "dev:web": "cd ../web && npm run dev",
+    "build": "tsc -b",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "hono": "^4.5.9",
+    "@supabase/supabase-js": "^2.45.4"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.2",
+    "wrangler": "^3.78.5",
+    "@cloudflare/workers-types": "^4.20240205.0"
+  }
+}

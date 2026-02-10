@@ -1,0 +1,35 @@
+name = "thai-election-evidence-layer"
+main = "src/index.ts"
+compatibility_date = "2026-02-10"
+
+# Environment-specific deployments
+[env.dev]
+name = "thai-election-evidence-layer-dev"
+
+[env.staging]
+name = "thai-election-evidence-layer-staging"
+
+[env.prod]
+name = "thai-election-evidence-layer-prod"
+
+# KV Namespace bindings (for rate limiting counter)
+# Create with: wrangler kv:namespace create "RATE_LIMIT"
+# Bindings added in wrangler.toml for prod/staging/dev
+
+# R2 Bucket bindings
+# Create with: wrangler r2 bucket create evidence-layer
+# R2_BUCKET_NAME binding
+
+# Environment-specific variables
+# Create apps/worker/.dev.vars (or apps/worker/.staging.vars, apps/worker/.prod.vars) with:
+# SUPABASE_URL=""
+# SUPABASE_SERVICE_ROLE_KEY=""
+# R2_BUCKET_NAME=""
+# RATE_LIMIT_WINDOW=60
+# RATE_LIMIT_MAX=100
+# KILL_SWITCH_UPLOADS=false
+# KILL_SWITCH_PUBLIC_WRITE=false
+
+# Optional: Turnstile (bot protection)
+# TURNSTILE_SECRET_KEY=""
+# TURNSTILE_SITE_KEY=""

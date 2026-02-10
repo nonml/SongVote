@@ -1,0 +1,33 @@
+{
+  "provinces": [
+    {
+      "id": 10,
+      "name_th": "กรุงเทพมหานคร"
+    }
+  ],
+  "constituencies": [
+    {
+      "id": 1,
+      "province_id": 10,
+      "khet_number": 1
+    }
+  ],
+  "subdistricts": [
+    {
+      "constituency_id": 1,
+      "subdistrict_id": 1001,
+      "subdistrict_name": "แขวงตัวอย่าง"
+    }
+  ],
+  "stations": [
+    {
+      "id": "1000001",
+      "constituency_id": 1,
+      "subdistrict_id": 1001,
+      "subdistrict_name": "แขวงตัวอย่าง",
+      "station_number": 1,
+      "location_name": "โรงเรียนตัวอย่าง",
+      "is_verified_exist": true
+    }
+  ]
+}

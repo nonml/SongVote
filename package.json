@@ -1,0 +1,20 @@
+{
+  "name": "thai-election-evidence-layer",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": ["apps/web", "apps/worker"],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:web\" \"npm run dev:worker\"",
+    "dev:web": "npm run dev --workspace=@thai-evidence/web",
+    "dev:worker": "npm run dev --workspace=@thai-evidence/worker",
+    "build": "npm run build --workspace=@thai-evidence/web && npm run build --workspace=@thai-evidence/worker",
+    "build:web": "npm run build --workspace=@thai-evidence/web",
+    "build:worker": "npm run build --workspace=@thai-evidence/worker",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
