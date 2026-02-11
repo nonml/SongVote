@@ -1,12 +1,16 @@
 import React from "react";
 import { Link, Routes, Route, Navigate } from "react-router-dom";
 import Home from "./pages/Home";
-import Capture from "./pages/Capture";
+import ElectionNightCapture from "./components/ElectionNightCapture";
 import Review from "./pages/Review";
 import Report from "./pages/Report";
 import Simulator from "./pages/Simulator";
 import StationPage from "./pages/StationPage";
 import PublicBoard from "./pages/PublicBoard";
+import Methodology from "./pages/Methodology";
+import LegalKit from "./pages/LegalKit";
+import TrustSafetyDashboard from "./components/TrustSafetyDashboard";
+import ScenarioReport from "./pages/ScenarioReport";
 
 export default function App() {
   return (
@@ -25,6 +29,9 @@ export default function App() {
             <Link to="/review">Review</Link>
             <Link to="/simulator">Simulator</Link>
             <Link to="/public-board">Public Board</Link>
+            <Link to="/methodology">Methodology</Link>
+            <Link to="/legal-kit">Legal Kit</Link>
+            <Link to="/trust-safety">Trust & Safety</Link>
           </nav>
         </div>
       </header>
@@ -32,11 +39,15 @@ export default function App() {
       <main className="container" style={{ paddingTop: 16, paddingBottom: 32 }}>
         <Routes>
           <Route path="/" element={<Home />} />
-          <Route path="/capture" element={<Capture />} />
+          <Route path="/capture" element={<ElectionNightCapture />} />
           <Route path="/report" element={<Report />} />
           <Route path="/review" element={<Review />} />
           <Route path="/simulator" element={<Simulator />} />
+          <Route path="/simulator/report" element={<ScenarioReport />} />
           <Route path="/public-board" element={<PublicBoard />} />
+          <Route path="/methodology" element={<Methodology />} />
+          <Route path="/legal-kit" element={<LegalKit />} />
+          <Route path="/trust-safety" element={<TrustSafetyDashboard />} />
           <Route path="/station/:stationId" element={<StationPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

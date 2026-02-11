@@ -3,7 +3,7 @@ import { createUnlistedStation } from "../lib/api";
 
 export default function UnlistedStationModal(props: {
   open: boolean;
-  ctx: { constituency_id: number; subdistrict_id: number | null; subdistrict_name: string } | null;
+  ctx: { constituency_id: number; subdistrict_id: number | null; subdistrict_name: string; station_number: number } | null;
   onClose: () => void;
   onCreated: (station_id: string) => void;
 }) {
@@ -58,8 +58,8 @@ export default function UnlistedStationModal(props: {
               });
               onCreated(r.station_id);
               onClose();
-            } catch (e:any) {
-              setErr(e?.message ?? "Failed");
+            } catch (e: unknown) {
+              setErr(e instanceof Error ? e.message : "Failed");
             } finally {
               setBusy(false);
             }

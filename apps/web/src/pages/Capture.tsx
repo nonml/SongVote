@@ -6,7 +6,7 @@ import { fetchConfig, submitEvidence, submitIncident, submitCustody, isOnline, a
 export default function Capture() {
   const [cfg, setCfg] = React.useState<Config | null>(null);
   const [station, setStation] = React.useState<Station | null>(null);
-  const [unlistedCtx, setUnlistedCtx] = React.useState<any>(null);
+  const [unlistedCtx, setUnlistedCtx] = React.useState<{ constituency_id: number; subdistrict_id: number | null; subdistrict_name: string; station_number: number } | null>(null);
   const [unlistedOpen, setUnlistedOpen] = React.useState(false);
 
   // Upload state
@@ -97,9 +97,8 @@ export default function Capture() {
                 if (!station) return;
                 setUploadErr(null); setUploadMsg(null); setUploading(true);
                 try {
-                  const payload: any = { station_id: station.id };
+                  const payload: Parameters<typeof submitEvidence>[0] = { station_id: station.id };
                   if (constituencyPhoto) {
-                    // In MVP, we'll just track metadata (real upload would need presigned URL)
                     payload.photo_constituency_key = `user-upload-${Date.now()}`;
                     payload.checksum_constituency_total = constituencyChecksum ? Number(constituencyChecksum) : undefined;
                   }
@@ -108,13 +107,10 @@ export default function Capture() {
                     payload.checksum_partylist_total = partylistChecksum ? Number(partylistChecksum) : undefined;
                   }
 
-                  // Check if online or offline
                   if (isOnline()) {
-                    // Online: submit directly
                     await submitEvidence(payload);
                     setUploadMsg("Upload submitted!");
                   } else {
-                    // Offline: add to queue
                     const queueItem = {
                       id: crypto.randomUUID(),
                       type: "evidence" as const,
@@ -124,8 +120,8 @@ export default function Capture() {
                     addToOfflineQueue(queueItem);
                     setUploadMsg("Saved for offline upload");
                   }
-                } catch (e: any) {
-                  setUploadErr(e?.message ?? "Submit failed");
+                } catch (e: unknown) {
+                  setUploadErr(e instanceof Error ? e.message : "Submit failed");
                 } finally {
                   setUploading(false);
                 }

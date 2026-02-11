@@ -233,6 +233,9 @@ export default function StationPage() {
           <button className="btn secondary" disabled={!legalKit} onClick={exportZip}>
             {exporting ? "Compressing..." : "Download ZIP (Photos + JSON)"}
           </button>
+          <a href="/legal-kit" className="btn secondary">
+            Build Legal Case
+          </a>
         </div>
         {legalKit && (
           <div style={{ marginTop: 12, fontSize: "12px", color: "#666" }}>

@@ -33,6 +33,10 @@ interface ReviewerState {
   details: string;
   reviewerId: string;
   stationNumberInput: string;
+  // Milestone 11: Reviewer confidence in transcription
+  transcriptionConfidence: number;
+  // Milestone 11: Dispute reason selection
+  disputeReason: "checksum_mismatch" | "math_mismatch" | "station_mismatch" | "conflicting_evidence" | "other" | "";
 }
 
 export default function Review() {
@@ -47,6 +51,8 @@ export default function Review() {
     details: "",
     reviewerId: "reviewer_" + crypto.randomUUID().slice(0, 8),
     stationNumberInput: "",
+    transcriptionConfidence: 50,
+    disputeReason: "",
   });
 
   React.useEffect(() => {
@@ -105,12 +111,15 @@ export default function Review() {
       score_map: state.scoreMap,
       metadata_checks: {
         total_valid: getTotalValid(),
-        checksum_match: state.currentQueueItem["checksum_" + sheetType + "_total"] !== null
-          ? getTotalValid() === state.currentQueueItem["checksum_" + sheetType + "_total"]
+        checksum_match: state.currentQueueItem[`checksum_${sheetType}_total`] !== null
+          ? getTotalValid() === (state.currentQueueItem as any)[`checksum_${sheetType}_total`]
           : undefined,
       },
       action: state.action,
       details: state.details || undefined,
+      // Milestone 11: Add transcription confidence and dispute reason
+      transcription_confidence: state.transcriptionConfidence,
+      dispute_reason: state.disputeReason || undefined,
     };
 
     try {
@@ -383,6 +392,22 @@ export default function Review() {
               </div>
             </div>
 
+            {/* Transcription Confidence (Milestone 11) */}
+            <div style={{ marginTop: 16 }}>
+              <label>Transcription Confidence (Milestone 11)</label>
+              <input
+                className="input"
+                type="range"
+                min={0}
+                max={100}
+                value={state.transcriptionConfidence}
+                onChange={e => setState(s => ({ ...s, transcriptionConfidence: Number(e.target.value) }))}
+              />
+              <div style={{ fontSize: "12px", color: "#666", marginTop: 4 }}>
+                Confidence: {state.transcriptionConfidence}%
+              </div>
+            </div>
+
             {/* Action Buttons */}
             <div style={{ marginTop: 16 }}>
               <label>Transcription notes (optional)</label>
@@ -394,6 +419,26 @@ export default function Review() {
                 placeholder="Any issues with the photo? Notes about the transcription..."
               />
             </div>
+
+            {/* Dispute Reason (Milestone 11) */}
+            {state.action === "dispute" && (
+              <div className="card" style={{ background: "#2a1a1a", marginTop: 12 }}>
+                <label>Dispute Reason (Milestone 11)</label>
+                <select
+                  className="input"
+                  value={state.disputeReason}
+                  onChange={e => setState(s => ({ ...s, disputeReason: e.target.value as ReviewerState["disputeReason"] }))}
+                  style={{ marginTop: 8 }}
+                >
+                  <option value="">Select a reason...</option>
+                  <option value="checksum_mismatch">Checksum Mismatch</option>
+                  <option value="math_mismatch">Math Inconsistency</option>
+                  <option value="station_mismatch">Station Header Mismatch</option>
+                  <option value="conflicting_evidence">Conflicting Evidence</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+            )}
 
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12, flexWrap: "wrap" }}>
               <button

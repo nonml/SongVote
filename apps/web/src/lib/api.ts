@@ -52,13 +52,28 @@ export interface ProvinceStats {
 }
 
 export interface SnapshotMetadata {
-  generated_at: string;
+  // Deterministic fields (same input = same output for hashing)
   snapshot_version: string;
-  last_updated: string | null;
   total_stations: number;
   verified_submissions: number;
   pending_review: number;
   disputed_count: number;
+  verified_constituency_tallies: number;
+  verified_partylist_tallies: number;
+  rejected_submissions: number;
+  // Metadata (may vary between runs)
+  generated_at: string;
+  last_updated: string | null;
+  provenance: {
+    build_time: string;
+    runtime_version: string;
+    database_version?: string;
+  };
+  coverage_statistics: {
+    total_percent: number;
+    verified_constituency_percent: number;
+    verified_partylist_percent: number;
+  };
 }
 
 export interface PublicSnapshot {
@@ -68,6 +83,60 @@ export interface PublicSnapshot {
   stations: StationSummary[];
   province_stats: ProvinceStats[];
   last_verified_at: string | null;
+}
+
+// Evidence types
+export interface StationEvidence {
+  station_id: string;
+  submissions: SubmissionSummary[];
+  incidents: IncidentResponse[];
+  custody_events: CustodyEventResponse[];
+}
+
+export interface IncidentResponse {
+  id: string;
+  incident_type: string;
+  occurred_at: string | null;
+  description: string | null;
+  media_keys: string[];
+  created_at: string;
+}
+
+export interface CustodyEventResponse {
+  id: string;
+  event_type: string;
+  occurred_at: string | null;
+  box_id: string | null;
+  seal_id: string | null;
+  notes: string | null;
+  media_keys: string[];
+  created_at: string;
+}
+
+export interface LegalKit {
+  station_info: {
+    station_id: string;
+    station_number: number;
+    location_name: string | null;
+    constituency_id: number;
+    subdistrict_id: number | null;
+    subdistrict_name: string;
+  };
+  submissions: SubmissionSummary[];
+  incidents: IncidentResponse[];
+  custody_events: CustodyEventResponse[];
+  verification_logs: {
+    tally_id: string;
+    reviewer_id: string;
+    sheet_type: string;
+    status: string;
+    created_at: string;
+  }[];
+  photo_hashes: {
+    key: string;
+    hash: string;
+  }[];
+  generated_at: string;
 }
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
@@ -99,7 +168,31 @@ export async function createUnlistedStation(payload: {
   return await res.json();
 }
 
-export async function submitIncident(payload: any): Promise<any> {
+export interface IncidentPayload {
+  incident_type: string;
+  occurred_at: string | null;
+  description: string | null;
+  media_keys: string[];
+  station_id: string;
+  constituency_id: number;
+  subdistrict_id: number | null;
+  station_number: number;
+}
+
+export interface CustodyPayload {
+  event_type: string;
+  occurred_at: string | null;
+  box_id: string | null;
+  seal_id: string | null;
+  notes: string | null;
+  media_keys: string[];
+  station_id: string;
+  constituency_id: number;
+  subdistrict_id: number | null;
+  station_number: number;
+}
+
+export async function submitIncident(payload: IncidentPayload): Promise<{ id?: string }> {
   const res = await fetch(`${API_BASE}/api/v1/incident/report`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -109,7 +202,7 @@ export async function submitIncident(payload: any): Promise<any> {
   return await res.json();
 }
 
-export async function submitCustody(payload: any): Promise<any> {
+export async function submitCustody(payload: CustodyPayload): Promise<{ id?: string }> {
   const res = await fetch(`${API_BASE}/api/v1/custody/event`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -131,11 +224,24 @@ export async function fetchPublicSnapshot(includePreliminary = false): Promise<P
       metadata: {
         generated_at: new Date().toISOString(),
         snapshot_version: "1.0.0",
-        last_updated: null,
+        last_updated: "1970-01-01T00:00:00.000Z",
         total_stations: 0,
         verified_submissions: 0,
         pending_review: 0,
-        disputed_count: 0
+        disputed_count: 0,
+        verified_constituency_tallies: 0,
+        verified_partylist_tallies: 0,
+        rejected_submissions: 0,
+        provenance: {
+          build_time: "1970-01-01T00:00:00.000Z",
+          runtime_version: "1.0.0",
+          database_version: "v1"
+        },
+        coverage_statistics: {
+          total_percent: 0,
+          verified_constituency_percent: 0,
+          verified_partylist_percent: 0
+        }
       },
       provinces: [],
       constituencies: [],
@@ -146,7 +252,7 @@ export async function fetchPublicSnapshot(includePreliminary = false): Promise<P
   }
 }
 
-export async function fetchStationEvidence(stationId: string): Promise<any> {
+export async function fetchStationEvidence(stationId: string): Promise<StationEvidence> {
   try {
     const res = await fetch(`${API_BASE}/api/v1/station/${encodeURIComponent(stationId)}/evidence`);
     if (!res.ok) throw new Error("station evidence fetch failed");
@@ -162,7 +268,14 @@ export async function fetchStationEvidence(stationId: string): Promise<any> {
   }
 }
 
-export async function fetchPresignedUpload(filename: string, type: string = "image/jpeg", uploadType: string = "evidence"): Promise<{ url: string; key: string; fields: any; fileType: string }> {
+export interface PresignedUploadResponse {
+  url: string;
+  key: string;
+  fields: Record<string, string>;
+  fileType: string;
+}
+
+export async function fetchPresignedUpload(filename: string, type: string = "image/jpeg", uploadType: string = "evidence"): Promise<PresignedUploadResponse> {
   try {
     const url = `${API_BASE}/api/v1/storage/presigned?filename=${encodeURIComponent(filename)}&type=${encodeURIComponent(type)}&upload_type=${encodeURIComponent(uploadType)}`;
     const res = await fetch(url);
@@ -178,7 +291,7 @@ export async function fetchPresignedUpload(filename: string, type: string = "ima
   }
 }
 
-export async function fetchLegalKit(stationId: string): Promise<any> {
+export async function fetchLegalKit(stationId: string): Promise<LegalKit | null> {
   try {
     const url = `${API_BASE}/api/v1/legal-kit/${encodeURIComponent(stationId)}`;
     const res = await fetch(url);
@@ -197,7 +310,7 @@ export async function submitEvidence(payload: {
   checksum_partylist_total?: number;
   user_session_id?: string;
   captcha_token?: string;
-}): Promise<{ submission_id: string | null; status: any }> {
+}): Promise<{ submission_id: string | null; status: string }> {
   const res = await fetch(`${API_BASE}/api/v1/evidence/upload`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -214,10 +327,10 @@ export function isOnline(): boolean {
 }
 
 // Queue for offline submissions
-interface OfflineItem {
+export interface OfflineItem {
   id: string;
-  type: "evidence" | "incident" | "custody";
-  payload: any;
+  type: "evidence" | "incident" | "custody" | "process";
+  payload: Record<string, unknown>;
   timestamp: number;
 }
 
@@ -293,7 +406,7 @@ export async function syncOfflineQueue(): Promise<{ success: number; failed: num
 
 // Submit a single offline item
 async function submitOfflineItem(item: OfflineItem): Promise<void> {
-  const url = `${API_BASE}/api/v1/${item.type === "evidence" ? "evidence/upload" : item.type === "incident" ? "incident/report" : "custody/event"}`;
+  const url = `${API_BASE}/api/v1/${item.type === "evidence" ? "evidence/upload" : item.type === "incident" ? "incident/report" : item.type === "custody" ? "custody/event" : "process/report"}`;
   const res = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },

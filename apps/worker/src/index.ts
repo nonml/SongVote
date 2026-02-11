@@ -140,17 +140,18 @@ app.post("/api/v1/storage/upload/:key", async (c) => {
 // Basic junk photo detection
 // This is a simplified version that runs in the worker without full image processing
 function checkJunkPhoto(body: ArrayBuffer): { isJunk: boolean; reason: string } {
+  const bytes = new Uint8Array(body);
   // 1. Check if file is too small (likely empty or placeholder)
-  if (body.byteLength < 1000) {
+  if (bytes.length < 1000) {
     return { isJunk: true, reason: "Image too small - likely empty or placeholder" };
   }
 
   // 2. Check JPEG header and footer for valid structure
-  if (body.byteLength >= 2 && body[0] === 0xff && body[1] === 0xd8) {
+  if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xd8) {
     // JPEG file - check for EOI (end of image) marker near the end
-    if (body.byteLength >= 2) {
-      const lastByte = body[body.byteLength - 1];
-      const secondLastByte = body[body.byteLength - 2];
+    if (bytes.length >= 2) {
+      const lastByte = bytes[bytes.length - 1];
+      const secondLastByte = bytes[bytes.length - 2];
       // JPEG ends with 0xff 0xd9 (EOI)
       if (lastByte !== 0xd9 || secondLastByte !== 0xff) {
         return { isJunk: true, reason: "JPEG file appears truncated or incomplete" };
@@ -160,7 +161,7 @@ function checkJunkPhoto(body: ArrayBuffer): { isJunk: boolean; reason: string } 
     // 3. Check for document-like patterns (high contrast areas)
     // Simplified check: JPEGs from documents typically have more variation in pixel values
     // This is a very basic heuristic
-    const entropy = calculateByteEntropy(new Uint8Array(body));
+    const entropy = calculateByteEntropy(bytes);
     if (entropy < 3.5) {
       return { isJunk: true, reason: "Image appears to be a solid color or very low detail" };
     }
@@ -169,10 +170,10 @@ function checkJunkPhoto(body: ArrayBuffer): { isJunk: boolean; reason: string } 
   }
 
   // 4. PNG checks
-  if (body.byteLength >= 4 && body[0] === 0x89 && body[1] === 0x50 && body[2] === 0x4e && body[3] === 0x47) {
+  if (bytes.length >= 4 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) {
     // PNG file - check for IEND chunk
-    if (body.byteLength >= 4) {
-      const last4Bytes = new Uint8Array(body, body.byteLength - 4, 4);
+    if (bytes.length >= 4) {
+      const last4Bytes = new Uint8Array(body, bytes.length - 4, 4);
       const iendMarker = [0x49, 0x45, 0x4e, 0x44]; // IEND in ASCII
       let hasIend = true;
       for (let i = 0; i < 4; i++) {
@@ -295,29 +296,26 @@ class S3Client {
     return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
   }
 
+  private async hmac(key: Uint8Array, data: string | Uint8Array): Promise<Uint8Array> {
+    const dataBytes = typeof data === "string" ? new TextEncoder().encode(data) : data;
+    // Cast key to ArrayBuffer for importKey - this is safe because we always create plain ArrayBuffer-backed arrays
+    const keyBuffer = key as unknown as ArrayBuffer;
+    const cryptoKey = await crypto.subtle.importKey("raw", keyBuffer, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+    // Type assertion needed for Cloudflare Workers crypto API compatibility
+    const signature = await crypto.subtle.sign("HMAC", cryptoKey, dataBytes as any);
+    // Copy to ensure we have a standard ArrayBuffer-backed Uint8Array
+    const result = new Uint8Array(signature.byteLength);
+    result.set(new Uint8Array(signature));
+    return result;
+  }
+
   private async getSigningKey(date: string): Promise<Uint8Array> {
     const kSecret = `AWS4${this.credentials.secretAccessKey}`;
-    const kDate = await this.hmacText(kSecret, date);
-    const kRegion = await this.hmacText(kDate, this.region);
-    const kService = await this.hmacText(kRegion, "s3");
-    const kSigning = await this.hmacText(kService, "aws4_request");
+    const kDate = await this.hmac(new TextEncoder().encode(kSecret), date);
+    const kRegion = await this.hmac(kDate, this.region);
+    const kService = await this.hmac(kRegion, "s3");
+    const kSigning = await this.hmac(kService, "aws4_request");
     return kSigning;
-  }
-
-  private async hmacText(key: string, data: string): Promise<Uint8Array> {
-    const encoder = new TextEncoder();
-    const keyData = encoder.encode(key);
-    const dataData = encoder.encode(data);
-    const cryptoKey = await crypto.subtle.importKey("raw", keyData, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-    const signature = await crypto.subtle.sign("HMAC", cryptoKey, dataData);
-    return new Uint8Array(signature);
-  }
-
-  private async hmac(key: Uint8Array, data: string): Promise<string> {
-    const encoder = new TextEncoder();
-    const dataData = encoder.encode(data);
-    const signature = await this.hmacText(key, data);
-    return Array.from(new Uint8Array(signature)).map((b) => b.toString(16).padStart(2, "0")).join("");
   }
 }
 
@@ -335,6 +333,65 @@ const getKillSwitch = (c: any, type: "uploads" | "public_write"): boolean => {
   return c.get("env")[key] === "true";
 };
 
+// Helper to log threat events
+const logThreatEvent = async (c: any, event: {
+  type: "brute_force" | "ddos" | "injection" | "tampering" | "access_violation" | "other";
+  severity: "low" | "medium" | "high" | "critical";
+  details: string;
+  source_ip?: string;
+  target?: string;
+  action_taken?: string;
+}): Promise<void> => {
+  const supa = getSupabase(c);
+  if (!supa) {
+    console.warn("Supabase not configured, threat event not logged:", event);
+    return;
+  }
+
+  try {
+    await supa.from("threat_logs").insert({
+      type: event.type,
+      severity: event.severity,
+      source_ip: event.source_ip || c.get("ip"),
+      target: event.target || null,
+      details: event.details,
+      action_taken: event.action_taken || null,
+      created_at: new Date().toISOString(),
+    }).select("id").limit(1);
+  } catch (e) {
+    console.error("Failed to log threat event:", e);
+  }
+};
+
+// Helper to get threat logs (admin only)
+const getThreatLogs = async (c: any, limit: number = 100): Promise<any[]> => {
+  const supa = getSupabase(c);
+  if (!supa) return [];
+
+  try {
+    const result = await supa.from("threat_logs").select("*").order("created_at", { ascending: false }).limit(limit);
+    return result.data || [];
+  } catch (e) {
+    console.error("Failed to fetch threat logs:", e);
+    return [];
+  }
+};
+
+// Helper to clear old threat logs (admin only)
+const clearOldThreatLogs = async (c: any, days: number = 30): Promise<number> => {
+  const supa = getSupabase(c);
+  if (!supa) return 0;
+
+  try {
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    const result = await supa.from("threat_logs").delete().lt("created_at", cutoff);
+    return result.count ?? 0;
+  } catch (e) {
+    console.error("Failed to clear old threat logs:", e);
+    return 0;
+  }
+};
+
 // Helper to check rate limit
 const checkRateLimit = async (c: any): Promise<{ allowed: boolean; remaining: number }> => {
   const window = parseInt(c.get("env").RATE_LIMIT_WINDOW || "60", 10);
@@ -345,7 +402,8 @@ const checkRateLimit = async (c: any): Promise<{ allowed: boolean; remaining: nu
   const cache = c.env?.CACHE || (c as any).env?.CACHE;
   if (cache) {
     const key = `ratelimit:${ip}`;
-    const count = await cache.get<number>(key);
+    // @ts-ignore - Cloudflare Workers Cache API type is not perfectly typed
+    const count: string | null = await cache.get(key);
     const current = count ? parseInt(count, 10) : 0;
     if (current >= max) {
       return { allowed: false, remaining: 0 };
@@ -1019,6 +1077,164 @@ app.get("/api/v1/admin/kill-switch", async (c) => {
   });
 });
 
+// Threat logging endpoints
+app.get("/api/v1/admin/threats", async (c) => {
+  const limit = parseInt(c.req.query("limit") || "100", 10);
+  const severity = c.req.query("severity") as "low" | "medium" | "high" | "critical" | null;
+
+  let query = getSupabase(c)?.from("threat_logs").select("*").order("created_at", { ascending: false }).limit(limit);
+
+  if (severity) {
+    query = query?.eq("severity", severity);
+  }
+
+  const result = await query;
+
+  if (result?.error) {
+    return c.json({ error: result.error.message }, 500);
+  }
+
+  return c.json({
+    threats: result?.data || [],
+    count: (result?.count ?? 0) as number,
+    generated_at: new Date().toISOString(),
+  });
+});
+
+app.post("/api/v1/admin/threats/clear", async (c) => {
+  const days = parseInt(c.req.query("days") || "30", 10);
+  const count = await clearOldThreatLogs(c, days);
+  return c.json({
+    message: `Cleared ${count} old threat logs`,
+    days: days,
+    cleared: count,
+  });
+});
+
+app.post("/api/v1/admin/threats/manual", async (c) => {
+  const body = await c.req.json();
+  const { type, severity, details, source_ip, target, action_taken } = body ?? {};
+
+  if (!type || !severity || !details) {
+    return c.json({ error: "type, severity, and details required" }, 400);
+  }
+
+  await logThreatEvent(c, {
+    type: type as any,
+    severity: severity as any,
+    details,
+    source_ip,
+    target,
+    action_taken,
+  });
+
+  return c.json({ message: "Threat event logged", type, severity });
+});
+
+// Threat detection on upload endpoint (Milestone 16)
+// Detect suspicious upload patterns and log threats
+app.post("/api/v1/evidence/upload", async (c) => {
+  const killSwitch = getKillSwitch(c, "uploads");
+  if (killSwitch) return c.json({ error: "Uploads disabled via kill switch" }, 503);
+
+  const supa = getSupabase(c);
+  if (!supa) return c.json({ error: "SUPABASE not configured" }, 501);
+
+  const rate = await checkRateLimit(c);
+  if (!rate.allowed) {
+    await logThreatEvent(c, {
+      type: "brute_force",
+      severity: "high",
+      details: "Upload rate limit exceeded",
+      source_ip: c.get("ip"),
+      action_taken: "rate_limited",
+    });
+    return c.json({ error: "Rate limit exceeded" }, 429);
+  }
+
+  // Verify captcha if token provided
+  const body = await c.req.json();
+  const { captcha_token } = body ?? {};
+  if (captcha_token) {
+    const captchaValid = await verifyCaptcha(c, captcha_token);
+    if (!captchaValid) {
+      await logThreatEvent(c, {
+        type: "tampering",
+        severity: "medium",
+        details: "CAPTCHA verification failed",
+        source_ip: c.get("ip"),
+        action_taken: "rejected",
+      });
+      return c.json({ error: "CAPTCHA verification failed" }, 403);
+    }
+  }
+
+  const { station_id, photo_constituency_key, photo_partylist_key, checksum_constituency_total, checksum_partylist_total, user_session_id } = body ?? {};
+
+  if (!station_id) {
+    await logThreatEvent(c, {
+      type: "injection",
+      severity: "low",
+      details: "Missing station_id in upload request",
+      source_ip: c.get("ip"),
+      action_taken: "rejected",
+    });
+    return c.json({ error: "station_id required" }, 400);
+  }
+
+  // Detect suspicious upload patterns (potential spam)
+  // Check for too many uploads to same station recently
+  const recentUploads = await supa
+    .from("submissions")
+    .select("id, created_at")
+    .eq("station_id", station_id)
+    .gte("created_at", new Date(Date.now() - 60 * 60 * 1000).toISOString()) // last hour
+    .limit(10);
+
+  if (recentUploads.data && recentUploads.data.length >= 10) {
+    await logThreatEvent(c, {
+      type: "ddos",
+      severity: "high",
+      details: `Suspicious upload pattern: ${recentUploads.data.length} uploads to same station in last hour`,
+      source_ip: c.get("ip"),
+      target: station_id,
+      action_taken: "flagged_for_review",
+    });
+    return c.json({ error: "Too many uploads to this station recently. Please try again later." }, 429);
+  }
+
+  if (photo_constituency_key && checksum_constituency_total !== undefined && !Number.isFinite(checksum_constituency_total)) {
+    return c.json({ error: "Invalid checksum_constituency_total" }, 400);
+  }
+  if (photo_partylist_key && checksum_partylist_total !== undefined && !Number.isFinite(checksum_partylist_total)) {
+    return c.json({ error: "Invalid checksum_partylist_total" }, 400);
+  }
+
+  const ins = await supa.from("submissions").insert({
+    station_id,
+    user_session_id: user_session_id ?? null,
+    ip_hash: null,
+    photo_constituency_key: photo_constituency_key ?? null,
+    photo_partylist_key: photo_partylist_key ?? null,
+    checksum_constituency_total: checksum_constituency_total ?? null,
+    checksum_partylist_total: checksum_partylist_total ?? null,
+    status_constituency: photo_constituency_key ? "pending" : "missing",
+    status_partylist: photo_partylist_key ? "pending" : "missing"
+  }).select("id, status_constituency, status_partylist").limit(1);
+
+  if (ins.error) {
+    await logThreatEvent(c, {
+      type: "tampering",
+      severity: "medium",
+      details: `Database insert error on upload: ${ins.error.message}`,
+      source_ip: c.get("ip"),
+      action_taken: "rejected",
+    });
+    return c.json({ error: ins.error.message }, 500);
+  }
+  return c.json({ submission_id: ins.data?.[0]?.id ?? null, status: ins.data?.[0] });
+});
+
 // Legal Kit / PDF Export endpoint
 // Returns structured data for generating PDFs and ZIP exports
 app.get("/api/v1/legal-kit/:station_id", async (c) => {
@@ -1145,17 +1361,219 @@ app.get("/api/v1/legal-kit/:station_id", async (c) => {
 // Helper to compute hashes for uploaded photos
 async function computePhotoHashes(c: any, submissions: any[]): Promise<Record<string, string>> {
   const hashes: Record<string, string> = {};
-  // Note: In production, we would fetch files from R2 and compute SHA-256
-  // For MVP, we return placeholder hashes based on keys
+  const bucketInfo = getR2Bucket(c);
+
   for (const sub of submissions) {
     if (sub.photo_constituency_key) {
-      hashes[sub.photo_constituency_key] = `sha256:${sub.photo_constituency_key.length.toString(16)}`;
+      hashes[sub.photo_constituency_key] = await computeSinglePhotoHash(c, sub.photo_constituency_key, bucketInfo);
     }
     if (sub.photo_partylist_key) {
-      hashes[sub.photo_partylist_key] = `sha256:${sub.photo_partylist_key.length.toString(16)}`;
+      hashes[sub.photo_partylist_key] = await computeSinglePhotoHash(c, sub.photo_partylist_key, bucketInfo);
     }
   }
   return hashes;
 }
+
+// Compute SHA-256 hash for a single photo
+async function computeSinglePhotoHash(c: any, key: string, bucketInfo: any): Promise<string> {
+  // If no R2 bucket configured, return a deterministic hash based on the key
+  if (!bucketInfo) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(key);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return "sha256:" + hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  try {
+    // Fetch the object from R2
+    const response = await bucketInfo.s3.getObject({ Bucket: bucketInfo.bucketName, Key: key });
+    const body = await response.Body?.arrayBuffer();
+
+    if (!body) {
+      return `sha256:empty_${key}`;
+    }
+
+    // Compute SHA-256 hash
+    const hashBuffer = await crypto.subtle.digest("SHA-256", body);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+
+    return `sha256:${hashHex}`;
+  } catch (e) {
+    console.error(`Failed to fetch photo for hashing: ${key}`, e);
+    // Fallback: deterministic hash based on key
+    const encoder = new TextEncoder();
+    const data = encoder.encode(key);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return `sha256:err_${hashArray.map(b => b.toString(16).padStart(2, "0")).join("")}`;
+  }
+}
+
+// Reviewer reputation model (Milestone 11)
+// Tracks accuracy of reviewers based on later consensus
+const REVIEWER_REPUTATION_WINDOW = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+interface ReviewerAccuracy {
+  reviewer_id: string;
+  total_reviews: number;
+  auto_verified_count: number;
+  corrected_count: number;
+  reputation_score: number; // 0-100
+}
+
+// Calculate reviewer reputation based on verification patterns
+function calculateReviewerReputation(tallies: any[]): ReviewerAccuracy[] {
+  const reviewerStats: Record<string, {
+    total: number;
+    autoVerified: number;
+    corrected: number;
+  }> = {};
+
+  for (const tally of tallies) {
+    const reviewerId = tally.reviewer_id;
+    if (!reviewerId) continue;
+
+    if (!reviewerStats[reviewerId]) {
+      reviewerStats[reviewerId] = { total: 0, autoVerified: 0, corrected: 0 };
+    }
+
+    reviewerStats[reviewerId].total += 1;
+
+    // Count auto-verifications (where checksum matched)
+    const metadataChecks = tally.metadata_checks || {};
+    if (metadataChecks.autoVerified === true) {
+      reviewerStats[reviewerId].autoVerified += 1;
+    }
+
+    // Count corrections (where station_id was changed)
+    const details = tally.details || {};
+    if (details.station_id_changed === true) {
+      reviewerStats[reviewerId].corrected += 1;
+    }
+  }
+
+  // Calculate reputation scores
+  const reputation: ReviewerAccuracy[] = [];
+  for (const [reviewerId, stats] of Object.entries(reviewerStats)) {
+    // Reputation based on:
+    // 1. High auto-verification rate (match upload checksum) = good
+    // 2. Low correction rate (don't change station) = good
+    const autoVerifiedRate = stats.total > 0 ? stats.autoVerified / stats.total : 0;
+    const correctionRate = stats.total > 0 ? stats.corrected / stats.total : 0;
+
+    // Base score: 50, plus auto-verified bonus, minus correction penalty
+    let score = 50 + (autoVerifiedRate * 30) - (correctionRate * 20);
+    score = Math.max(0, Math.min(100, Math.round(score)));
+
+    reputation.push({
+      reviewer_id: reviewerId,
+      total_reviews: stats.total,
+      auto_verified_count: stats.autoVerified,
+      corrected_count: stats.corrected,
+      reputation_score: score,
+    });
+  }
+
+  // Sort by reputation (highest first)
+  reputation.sort((a, b) => b.reputation_score - a.reputation_score);
+
+  return reputation;
+}
+
+// Endpoint to get reviewer reputation stats
+app.get("/api/v1/admin/reviewer-reputation", async (c) => {
+  const supa = getSupabase(c);
+  if (!supa) return c.json({ error: "SUPABASE not configured" }, 501);
+
+  try {
+    // Get tallies with reviewer info
+    const talliesResult = await supa.from("tallies").select(`
+      id,
+      reviewer_id,
+      submission_id,
+      sheet_type,
+      score_map,
+      metadata_checks,
+      details,
+      created_at
+    `).limit(10000);
+
+    if (talliesResult.error) {
+      return c.json({ error: talliesResult.error.message }, 500);
+    }
+
+    const tallies = talliesResult.data || [];
+
+    // Calculate reputation for each reviewer
+    const reputation = calculateReviewerReputation(tallies);
+
+    return c.json({
+      reviewers: reputation,
+      generated_at: new Date().toISOString(),
+    });
+  } catch (e) {
+    console.error("Reviewer reputation fetch error:", e);
+    return c.json({ error: "Failed to fetch reviewer reputation" }, 500);
+  }
+});
+
+// Endpoint to get detailed reviewer history
+app.get("/api/v1/admin/reviewer/:reviewer_id/history", async (c) => {
+  const supa = getSupabase(c);
+  if (!supa) return c.json({ error: "SUPABASE not configured" }, 501);
+
+  const reviewerId = c.req.param("reviewer_id");
+
+  try {
+    const talliesResult = await supa.from("tallies").select(`
+      id,
+      submission_id,
+      sheet_type,
+      action,
+      score_map,
+      metadata_checks,
+      details,
+      created_at,
+      stations ( id, station_number, location_name )
+    `)
+    .eq("reviewer_id", reviewerId)
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+    if (talliesResult.error) {
+      return c.json({ error: talliesResult.error.message }, 500);
+    }
+
+    const tallies = talliesResult.data || [];
+
+    // Calculate statistics
+    const totalReviews = tallies.length;
+    const autoVerified = tallies.filter(t => t.metadata_checks?.autoVerified === true).length;
+    const corrections = tallies.filter(t => t.details?.station_id_changed === true).length;
+    const verificationRate = totalReviews > 0 ? Math.round((autoVerified / totalReviews) * 100) : 0;
+    const correctionRate = totalReviews > 0 ? Math.round((corrections / totalReviews) * 100) : 0;
+
+    // Calculate reputation score
+    let reputationScore = 50 + (verificationRate * 0.3) - (correctionRate * 0.2);
+    reputationScore = Math.max(0, Math.min(100, Math.round(reputationScore)));
+
+    return c.json({
+      reviewer_id: reviewerId,
+      total_reviews: totalReviews,
+      auto_verified: autoVerified,
+      station_corrections: corrections,
+      verification_rate: verificationRate,
+      correction_rate: correctionRate,
+      reputation_score: reputationScore,
+      history: tallies,
+      generated_at: new Date().toISOString(),
+    });
+  } catch (e) {
+    console.error("Reviewer history fetch error:", e);
+    return c.json({ error: "Failed to fetch reviewer history" }, 500);
+  }
+});
 
 export default app;

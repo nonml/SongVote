@@ -60,13 +60,28 @@ interface VerificationLog {
 }
 
 interface SnapshotMetadata {
-  generated_at: string;
+  // Deterministic fields (same input = same output for hashing)
   snapshot_version: string;
-  last_updated: string | null;
   total_stations: number;
   verified_submissions: number;
   pending_review: number;
   disputed_count: number;
+  verified_constituency_tallies: number;
+  verified_partylist_tallies: number;
+  rejected_submissions: number;
+  // Metadata (may vary between runs)
+  generated_at: string;
+  last_updated: string | null;
+  provenance: {
+    build_time: string;
+    runtime_version: string;
+    database_version?: string;
+  };
+  coverage_statistics: {
+    total_percent: number;
+    verified_constituency_percent: number;
+    verified_partylist_percent: number;
+  };
 }
 
 interface StationSummary {
@@ -112,7 +127,7 @@ interface PublicSnapshot {
   last_verified_at: string | null;
 }
 
-async function generateSnapshot(supabase: any): Promise<PublicSnapshot> {
+async function generateSnapshot(supabase: any, forHashing: boolean = false): Promise<PublicSnapshot> {
   const generatedAt = new Date().toISOString();
 
   // Get all provinces
@@ -240,6 +255,17 @@ async function generateSnapshot(supabase: any): Promise<PublicSnapshot> {
   const disputedCount = submissions.filter(
     (s: Submission) => s.status_constituency === "disputed" || s.status_partylist === "disputed"
   ).length;
+  const rejectedCount = submissions.filter(
+    (s: Submission) => s.status_constituency === "rejected" || s.status_partylist === "rejected"
+  ).length;
+
+  // Count verified tallies
+  const verifiedConstituencyTallies = tallies.filter(
+    (t: any) => t.action === "verify"
+  ).filter((t: any) => t.sheet_type === "constituency").length;
+  const verifiedPartylistTallies = tallies.filter(
+    (t: any) => t.action === "verify"
+  ).filter((t: any) => t.sheet_type === "partylist").length;
 
   // Get most recent verified timestamp
   const verifiedSubmission = submissions.find(
@@ -247,14 +273,38 @@ async function generateSnapshot(supabase: any): Promise<PublicSnapshot> {
   );
   const lastVerifiedAt = verifiedSubmission ? verifiedSubmission.created_at : null;
 
+  // Calculate coverage percentages
+  const totalCoverage = totalStations > 0 ? Math.round((verifiedStations.length / totalStations) * 10000) / 100 : 0;
+  const constituencyCoverage = verifiedConstituencyTallies > 0
+    ? Math.round((verifiedConstituencyTallies / submissions.length) * 10000) / 100
+    : 0;
+  const partylistCoverage = verifiedPartylistTallies > 0
+    ? Math.round((verifiedPartylistTallies / submissions.length) * 10000) / 100
+    : 0;
+
   const metadata: SnapshotMetadata = {
-    generated_at: generatedAt,
-    snapshot_version: "1.0.0",
-    last_updated: lastVerifiedAt,
+    // Deterministic fields (same input = same output for hashing)
+    snapshot_version: "2.0.0",
     total_stations: totalStations,
     verified_submissions: verifiedSubmissions,
     pending_review: pendingReview,
     disputed_count: disputedCount,
+    verified_constituency_tallies: verifiedConstituencyTallies,
+    verified_partylist_tallies: verifiedPartylistTallies,
+    rejected_submissions: rejectedCount,
+    // Metadata (may vary between runs)
+    generated_at: generatedAt,
+    last_updated: lastVerifiedAt,
+    provenance: {
+      build_time: generatedAt,
+      runtime_version: "2.0.0",
+      database_version: "v1",
+    },
+    coverage_statistics: {
+      total_percent: totalCoverage,
+      verified_constituency_percent: constituencyCoverage,
+      verified_partylist_percent: partylistCoverage,
+    },
   };
 
   return {
@@ -272,12 +322,32 @@ function getTallyTotal(scoreMap: any): number | null {
   return scoreMap.total_valid || scoreMap.total || null;
 }
 
-async function saveSnapshot(snapshot: PublicSnapshot, outputDir: string): Promise<void> {
+async function saveSnapshot(snapshot: PublicSnapshot, outputDir: string, isDeterministic: boolean = false): Promise<void> {
   const fs = await import("fs/promises");
   const path = await import("path");
+  const crypto = await import("crypto");
 
-  const filePath = path.join(outputDir, "snapshot.json");
-  const content = JSON.stringify(snapshot, null, 2);
+  const filePath = path.join(outputDir, isDeterministic ? "snapshot.deterministic.json" : "snapshot.json");
+
+  // For deterministic output, remove time-dependent fields
+  let content: string;
+  if (isDeterministic) {
+    // Create deterministic version without generated_at
+    const deterministicSnapshot = {
+      ...snapshot,
+      metadata: {
+        ...snapshot.metadata,
+        generated_at: "1970-01-01T00:00:00.000Z", // Fixed epoch for hashing
+      }
+    };
+    content = JSON.stringify(deterministicSnapshot, null, 2);
+
+    // Calculate hash for integrity verification
+    const hash = crypto.createHash("sha256").update(content).digest("hex");
+    content = `// Snapshot hash: ${hash}\n` + content;
+  } else {
+    content = JSON.stringify(snapshot, null, 2);
+  }
 
   await fs.writeFile(filePath, content, "utf8");
   console.log(`Snapshot saved to ${filePath}`);
@@ -301,8 +371,15 @@ async function main() {
   console.log(`Generated snapshot with ${snapshot.stations.length} stations`);
 
   const outputDir = env.SNAPSHOT_OUTPUT_DIR || "./dist";
-  await saveSnapshot(snapshot, outputDir);
 
+  // Save regular snapshot
+  await saveSnapshot(snapshot, outputDir, false);
+
+  // Save deterministic snapshot for integrity verification
+  await saveSnapshot(snapshot, outputDir, true);
+
+  console.log(`Metadata: ${snapshot.metadata.verified_submissions} verified, ${snapshot.metadata.pending_review} pending, ${snapshot.metadata.disputed_count} disputed`);
+  console.log(`Coverage: ${snapshot.metadata.coverage_statistics.total_percent}% total, ${snapshot.metadata.coverage_statistics.verified_constituency_percent}% constituency`);
   console.log("Snapshot generation complete");
 }
 

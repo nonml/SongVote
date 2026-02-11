@@ -5,7 +5,7 @@ type Props = {
   cfg: Config;
   value?: Station | null;
   onChange: (station: Station | null) => void;
-  onNeedUnlisted?: (ctx: { constituency_id: number; subdistrict_id: number | null; subdistrict_name: string }) => void;
+  onNeedUnlisted?: (ctx: { constituency_id: number; subdistrict_id: number | null; subdistrict_name: string; station_number: number }) => void;
   onSearchStation?: (query: string) => void;
 };
 
@@ -121,6 +121,7 @@ export default function StationSelector({ cfg, value, onChange, onNeedUnlisted, 
                 constituency_id: constituencyId as number,
                 subdistrict_id: subdistrictId ? (subdistrictId as number) : (sd?.subdistrict_id ?? null),
                 subdistrict_name: sd?.subdistrict_name ?? "UNKNOWN",
+                station_number: 0, // Placeholder; will be set by user in modal
               });
             }}>+ Unlisted Station</button>
           </div>

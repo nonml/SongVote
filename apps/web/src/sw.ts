@@ -3,7 +3,7 @@ const STATIC_FILES = ["/", "/index.html", "/styles.css", "/main.tsx", "/App.tsx"
 
 // Install event - cache static files
 self.addEventListener("install", (event) => {
-  event.waitUntil(
+  (event as ExtendableEvent).waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(STATIC_FILES);
     })
@@ -12,7 +12,7 @@ self.addEventListener("install", (event) => {
 
 // Activate event - clean up old caches
 self.addEventListener("activate", (event) => {
-  event.waitUntil(
+  (event as ExtendableEvent).waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.filter((name) => name !== CACHE_NAME).map((name) => caches.delete(name))
@@ -23,29 +23,22 @@ self.addEventListener("activate", (event) => {
 
 // Fetch event - serve from cache, fallback to network
 self.addEventListener("fetch", (event) => {
-  event.respondWith(
-    caches.match(event.request).then((response) => {
-      return response || fetch(event.request);
+  (event as FetchEvent).respondWith(
+    caches.match((event as FetchEvent).request).then((response) => {
+      return response || fetch((event as FetchEvent).request);
     })
   );
 });
 
 // Message handling for offline queue
 self.addEventListener("message", (event) => {
-  if (event.data && event.data.type === "SYNC_QUEUE") {
-    event.waitUntil(syncOfflineQueue());
+  if (event.data && (event.data as any).type === "SYNC_QUEUE") {
+    (event as ExtendableEvent & MessageEvent<any>).waitUntil(syncOfflineQueue());
   }
 });
 
 // Queue for offline submissions
 const OFFLINE_QUEUE_KEY = "offline_queue_v1";
-
-interface OfflineItem {
-  id: string;
-  type: "evidence" | "incident" | "custody";
-  payload: any;
-  timestamp: number;
-}
 
 async function syncOfflineQueue() {
   const queue = await getOfflineQueue();
@@ -68,8 +61,8 @@ async function syncOfflineQueue() {
   }
 
   // Send success/failure back to main thread
-  if (clients.matchAll().length > 0) {
-    clients.matchAll().then((all) => {
+  if ((await clients.matchAll()).length > 0) {
+    clients.matchAll().then((all: Client[]) => {
       all.forEach((client) => {
         client.postMessage({ type: "SYNC_COMPLETE", successful, failed });
       });

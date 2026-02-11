@@ -235,6 +235,16 @@ export default function PublicBoard() {
           Commission of Thailand.
         </small>
       </div>
+
+      <div className="card">
+        <h3 style={{ marginTop: 0 }}>Learn More</h3>
+        <Link to="/methodology" className="btn secondary" style={{ marginTop: 8 }}>
+          Read Our Methodology
+        </Link>
+        <p style={{ fontSize: "12px", color: "#666", marginTop: 8 }}>
+          Understanding how verification works and what "Verified" means.
+        </p>
+      </div>
     </div>
   );
 }
