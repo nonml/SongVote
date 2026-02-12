@@ -66,8 +66,12 @@ export function calculateUserRiskScore(
   // Check for suspicious patterns
   // Multiple stations in short time (impossible for one person)
   const uniqueStations = new Set(submissions.map(s => s.station_id)).size;
-  if (recentSubmissions > 0 && uniqueStations / recentSubmissions > 2) {
-    riskScore += 20; // Suspicious: many stations per submission
+  // Check if ratio of unique stations to submissions is high (> 2 means >2 stations per submission on average)
+  // This would only be possible if some submissions go to multiple stations
+  // For now, use the inverse: check if submissions are concentrated on few stations
+  // (many submissions per station) which indicates spam/bot behavior
+  if (recentSubmissions > 0 && recentSubmissions / uniqueStations > 2) {
+    riskScore += 20; // Suspicious: many submissions per station
   }
 
   // Check for excessive custody/incident reports (potential trolling)

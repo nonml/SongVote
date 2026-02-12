@@ -11,6 +11,12 @@ import Methodology from "./pages/Methodology";
 import LegalKit from "./pages/LegalKit";
 import TrustSafetyDashboard from "./components/TrustSafetyDashboard";
 import ScenarioReport from "./pages/ScenarioReport";
+import StatusPage from "./pages/StatusPage";
+import GovernancePage from "./pages/GovernancePage";
+import LegalCaseBuilder from "./pages/LegalCaseBuilder";
+import TransparencyLog from "./pages/TransparencyLog";
+import PartnerAPI from "./pages/PartnerAPI";
+import FailoverStatus from "./pages/FailoverStatus";
 
 export default function App() {
   return (
@@ -32,6 +38,8 @@ export default function App() {
             <Link to="/methodology">Methodology</Link>
             <Link to="/legal-kit">Legal Kit</Link>
             <Link to="/trust-safety">Trust & Safety</Link>
+            <Link to="/status">Status</Link>
+            <Link to="/governance">Governance</Link>
           </nav>
         </div>
       </header>
@@ -48,6 +56,12 @@ export default function App() {
           <Route path="/methodology" element={<Methodology />} />
           <Route path="/legal-kit" element={<LegalKit />} />
           <Route path="/trust-safety" element={<TrustSafetyDashboard />} />
+          <Route path="/status" element={<StatusPage />} />
+          <Route path="/governance" element={<GovernancePage />} />
+          <Route path="/legal-cases" element={<LegalCaseBuilder />} />
+          <Route path="/transparency-log" element={<TransparencyLog />} />
+          <Route path="/partner-api" element={<PartnerAPI />} />
+          <Route path="/failover" element={<FailoverStatus />} />
           <Route path="/station/:stationId" element={<StationPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
